@@ -308,10 +308,16 @@ function draftCard() {
     const label = FIELD_LABELS[k] || k;
     const v = f[k];
     if (Array.isArray(v)) {
-      const chips = v.length
-        ? v.map((it) => `<span class="chip">${esc(it.name)} ${it.cost != null ? it.cost : (it.value != null ? it.value : '')}${it.qty != null && it.unit_value != null ? ' x' + it.qty + '@' + it.unit_value : ''}</span>`).join('')
-        : '<span class="empty">无</span>';
-      rows.push(`<div class="row"><span class="row-name">${label}</span><span class="chips">${chips}</span></div>`);
+      if (k === 'mods' || k === 'recycling') {
+        const numKey = k === 'mods' ? 'cost' : 'value';
+        const text = v.map((it) => `${it.name}:${it[numKey] != null ? it[numKey] : ''}`).join('；');
+        rows.push(`<div class="row"><span class="row-name">${label}</span><input class="inline-input" data-field="${k}" data-array="${numKey}" type="text" value="${esc(text)}" placeholder="可改：名称:金额，多个用；隔开"></div>`);
+      } else {
+        const chips = v.length
+          ? v.map((it) => `<span class="chip">${esc(it.name)} ${it.cost != null ? it.cost : (it.value != null ? it.value : '')}${it.qty != null && it.unit_value != null ? ' x' + it.qty + '@' + it.unit_value : ''}</span>`).join('')
+          : '<span class="empty">无</span>';
+        rows.push(`<div class="row"><span class="row-name">${label}</span><span class="chips">${chips}</span></div>`);
+      }
     } else {
       const isNum = typeof v === 'number';
       rows.push(`<div class="row"><span class="row-name">${label}</span><input class="inline-input" data-field="${k}" type="${isNum ? 'number' : 'text'}" value="${esc(v)}"></div>`);
@@ -728,11 +734,28 @@ document.addEventListener('click', (e) => {
   }
 });
 
+function parsePairText(text, numKey) {
+  return String(text || '')
+    .split(/[；;，,、\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const m = part.match(/^(.+?)[:：]?\s*([\d.]*)$/);
+      const name = ((m && m[1]) || part).trim();
+      const num = Number((m && m[2]) || 0) || 0;
+      return { name, [numKey]: num };
+    });
+}
+
 document.addEventListener('input', (e) => {
   const el = e.target;
   const key = el && el.dataset && el.dataset.field;
   if (!key || !draft) return;
-  draft.fields[key] = el.type === 'number' ? Number(el.value) : el.value;
+  if (el.dataset.array) {
+    draft.fields[key] = parsePairText(el.value, el.dataset.array);
+  } else {
+    draft.fields[key] = el.type === 'number' ? Number(el.value) : el.value;
+  }
   if (draft.type === 'sale') {
     const f = draft.fields;
     const profit = r2(
