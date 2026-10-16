@@ -1,0 +1,6 @@
+# 外网 HTTPS 反代模板
+# 把 jxc.example.com 换成你的域名；5443 换成端口映射用的非标端口
+# 80/443 被运营商封时，改为 DNS challenge 签发（部署时按实际配）
+jxc.example.com:5443 {
+	reverse_proxy 127.0.0.1:8090
+}

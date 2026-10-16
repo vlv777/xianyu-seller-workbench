@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>闲鱼助手</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Microsoft YaHei", system-ui, sans-serif; background: #10141a; color: #dde3ea; height: 100vh; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 14px; padding: 10px 16px; background: #171d26; border-bottom: 1px solid #232c38; }
+  header h1 { font-size: 16px; font-weight: 600; }
+  .badge { font-size: 12px; padding: 3px 9px; border-radius: 10px; background: #2a3442; }
+  .badge.online { background: #14532d; color: #86efac; }
+  .badge.offline { background: #3f2a2a; color: #fca5a5; }
+  header .grow { flex: 1; }
+  button { cursor: pointer; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; border-radius: 6px; padding: 6px 12px; font-size: 13px; }
+  button:hover { background: #273449; }
+  button.primary { background: #2563eb; border-color: #2563eb; }
+  button.primary:hover { background: #1d4ed8; }
+  button.danger { background: #7f1d1d; border-color: #7f1d1d; }
+  .switch { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+  main { flex: 1; display: flex; min-height: 0; }
+  .convs { width: 280px; border-right: 1px solid #232c38; overflow-y: auto; background: #141922; }
+  .conv { padding: 10px 12px; border-bottom: 1px solid #1c232e; cursor: pointer; }
+  .conv:hover, .conv.active { background: #1c2534; }
+  .conv .row1 { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+  .conv .nick { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .conv .time { color: #64748b; font-size: 11px; }
+  .conv .row2 { font-size: 12px; color: #7c8ba1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag { font-size: 11px; padding: 1px 6px; border-radius: 8px; margin-left: 6px; }
+  .tag.auto { background: #14532d; color: #86efac; }
+  .tag.manual { background: #1e3a8a; color: #93c5fd; }
+  .tag.handoff { background: #7c2d12; color: #fdba74; }
+  .chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .chat-head { padding: 10px 14px; border-bottom: 1px solid #232c38; display: flex; align-items: center; gap: 10px; background: #141922; }
+  .chat-head .grow { flex: 1; }
+  .msgs { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 70%; padding: 8px 12px; border-radius: 10px; font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+  .msg .meta { font-size: 10px; color: #8fa0b5; margin-bottom: 3px; }
+  .msg.in { align-self: flex-start; background: #1f2937; }
+  .msg.out { align-self: flex-end; background: #1e3a5f; }
+  .msg.sys { align-self: center; background: #2a2320; color: #fdba74; font-size: 12px; max-width: 85%; }
+  .suggest { margin: 0 14px 8px; padding: 8px 12px; border: 1px dashed #b45309; background: #2a1f10; border-radius: 8px; font-size: 12px; display: none; }
+  .suggest textarea { width: 100%; margin-top: 6px; background: #10141a; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 6px; font-size: 12px; resize: vertical; min-height: 48px; }
+  .inputbar { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid #232c38; background: #141922; }
+  .inputbar textarea { flex: 1; background: #10141a; color: #e2e8f0; border: 1px solid #334155; border-radius: 8px; padding: 8px 10px; font-size: 13px; resize: none; min-height: 44px; max-height: 120px; }
+  .empty { color: #64748b; text-align: center; margin-top: 60px; font-size: 13px; }
+  dialog { background: #171d26; color: #dde3ea; border: 1px solid #334155; border-radius: 10px; padding: 18px; width: 520px; max-width: 92vw; }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  dialog h2 { font-size: 15px; margin-bottom: 12px; }
+  dialog label { display: block; font-size: 12px; color: #94a3b8; margin: 10px 0 4px; }
+  dialog input[type=text], dialog textarea { width: 100%; background: #10141a; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 7px 9px; font-size: 13px; }
+  dialog .actions { margin-top: 14px; display: flex; justify-content: flex-end; gap: 8px; }
+  #qrbox { text-align: center; }
+  #qrbox img { width: 220px; height: 220px; background: #fff; border-radius: 8px; margin-top: 8px; }
+  #logs { font-family: Consolas, monospace; font-size: 12px; max-height: 60vh; overflow-y: auto; white-space: pre-wrap; }
+  .logline.warn { color: #fbbf24; }
+  .logline.error { color: #f87171; }
+</style>
+</head>
+<body>
+<header>
+  <h1>闲鱼助手</h1>
+  <span id="acc" class="badge offline">未登录</span>
+  <span id="autoBadge" class="badge">自动回复加载中</span>
+  <div class="grow"></div>
+  <div class="switch"><input type="checkbox" id="autoToggle"><label for="autoToggle">自动回复</label></div>
+  <button id="btnLogin">扫码登录</button>
+  <button id="btnLogs">日志</button>
+  <button id="btnSettings">设置</button>
+</header>
+<main>
+  <div class="convs" id="convs"><div class="empty">暂无会话</div></div>
+  <div class="chat">
+    <div class="chat-head" id="chatHead" style="display:none">
+      <span id="chatNick" style="font-size:14px;font-weight:600"></span>
+      <span id="chatMode" class="tag auto">自动</span>
+      <div class="grow"></div>
+      <button id="btnTakeover">接管</button>
+      <button id="btnAutoMode" class="primary">恢复自动</button>
+    </div>
+    <div class="msgs" id="msgs"><div class="empty">左侧选择会话</div></div>
+    <div class="suggest" id="suggest">
+      <b>AI 拿不准，已转人工。</b><span id="suggestReason"></span>
+      <textarea id="suggestText" placeholder="AI 草稿参考，可修改后发送"></textarea>
+      <div style="margin-top:6px;text-align:right">
+        <button onclick="useSuggest()">填入输入框</button>
+      </div>
+    </div>
+    <div class="inputbar">
+      <textarea id="input" placeholder="手动回复（Enter 发送，Shift+Enter 换行）。发送后该会话进入人工模式。" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendManual();}"></textarea>
+      <button class="primary" onclick="sendManual()">发送</button>
+    </div>
+  </div>
+</main>
+
+<dialog id="dlgLogin">
+  <h2>扫码登录小号</h2>
+  <div id="qrbox">
+    <div id="qrStatus">正在生成二维码…</div>
+    <img id="qrImg" style="display:none" alt="二维码">
+  </div>
+  <div class="actions"><button onclick="dlgLogin.close()">关闭</button></div>
+</dialog>
+
+<dialog id="dlgSettings">
+  <h2>设置</h2>
+  <label>拿不准时的兜底话术</label>
+  <input type="text" id="cfHolding">
+  <label>转人工关键词（逗号分隔）</label>
+  <textarea id="cfKeywords" rows="2"></textarea>
+  <label>回复延迟（秒，最小 / 最大）</label>
+  <input type="text" id="cfDelay" style="width:120px"> <span style="font-size:12px;color:#94a3b8">~</span> <input type="text" id="cfDelayMax" style="width:120px">
+  <label>10 分钟内每会话最多自动回复条数</label>
+  <input type="text" id="cfMax" style="width:120px">
+  <label>PushPlus Token（微信推送）</label>
+  <input type="text" id="cfPush">
+  <label>Server酱 SendKey（可选）</label>
+  <input type="text" id="cfSc">
+  <label>AI 接口 Key（智谱 GLM，回复+识图共用）</label>
+  <input type="password" id="cfKey" placeholder="智谱开放平台 API Key">
+  <label>知识库路径（md 文件，改后重启生效）</label>
+  <input type="text" id="cfKb" placeholder="知识库\数码店铺知识库.md">
+  <label>图片识别 · 接口地址（留空与上面共用）</label>
+  <input type="text" id="cfVBase" placeholder="https://open.bigmodel.cn/api/paas/v4">
+  <label>图片识别 · API Key（留空与上面共用）</label>
+  <input type="password" id="cfVKey">
+  <label>图片识别 · 模型名（留空默认 glm-5.3-flash）</label>
+  <input type="text" id="cfVModel" placeholder="glm-5.3-flash">
+  <div class="actions">
+    <button onclick="dlgSettings.close()">取消</button>
+    <button class="primary" onclick="saveSettings()">保存</button>
+  </div>
+</dialog>
+
+<dialog id="dlgLogs" style="width:760px">
+  <h2>运行日志</h2>
+  <div id="logs"></div>
+  <div class="actions"><button onclick="dlgLogs.close()">关闭</button></div>
+</dialog>
+
+<script>
+let selected = null, lastLogId = 0, convCache = [];
+const $ = id => document.getElementById(id);
+const fmtTime = ts => { const d = new Date(ts * 1000); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+
+async function api(path, opts) { const r = await fetch(path, opts); return r.json(); }
+
+async function pollState() {
+  try {
+    const s = await api('/api/state');
+    $('acc').textContent = s.status + (s.nick ? '：' + s.nick : '');
+    $('acc').className = 'badge ' + (s.status === '在线' ? 'online' : 'offline');
+    $('autoToggle').checked = s.auto_reply;
+    $('autoBadge').textContent = s.auto_reply ? '自动回复开启' : '自动回复关闭';
+    $('autoBadge').className = 'badge ' + (s.auto_reply ? 'online' : 'offline');
+    convCache = s.conversations || [];
+    renderConvs();
+    if (selected) renderChatHead();
+  } catch (e) {}
+}
+
+function renderConvs() {
+  const box = $('convs');
+  if (!convCache.length) { box.innerHTML = '<div class="empty">暂无会话</div>'; return; }
+  box.innerHTML = convCache.map(c => {
+    const tag = c.mode === 'auto' ? '<span class="tag auto">自动</span>' :
+                c.mode === 'handoff' ? '<span class="tag handoff">待人工</span>' :
+                '<span class="tag manual">人工</span>';
+    return `<div class="conv ${selected === c.cid ? 'active' : ''}" onclick="selectConv('${c.cid}')">
+      <div class="row1"><span class="nick">${esc(c.buyer_nick || c.buyer_id)}</span><span class="time">${fmtTime(c.last_ts)}</span></div>
+      <div class="row2">${esc(c.last_text || '')} ${tag}</div>
+    </div>`;
+  }).join('');
+}
+
+function esc(s) { return String(s || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+function selectConv(cid) { selected = cid; renderConvs(); renderChatHead(); loadMsgs(); }
+function currentConv() { return convCache.find(c => c.cid === selected); }
+
+function renderChatHead() {
+  const c = currentConv();
+  if (!c) { $('chatHead').style.display = 'none'; return; }
+  $('chatHead').style.display = 'flex';
+  $('chatNick').textContent = c.buyer_nick || c.buyer_id;
+  $('chatMode').textContent = c.mode === 'auto' ? '自动' : c.mode === 'handoff' ? '待人工' : '人工';
+  $('chatMode').className = 'tag ' + c.mode;
+  const sg = $('suggest');
+  if (c.needs_human) {
+    sg.style.display = 'block';
+    $('suggestText').value = c.suggested || '';
+    $('suggestReason').textContent = c.suggested ? '' : '（AI 没有生成草稿，请直接回复）';
+  } else { sg.style.display = 'none'; }
+}
+
+async function loadMsgs() {
+  if (!selected) return;
+  const d = await api('/api/messages?cid=' + encodeURIComponent(selected));
+  const box = $('msgs');
+  box.innerHTML = (d.messages || []).map(m => {
+    const who = m.sender === 'buyer' ? '' : m.sender === 'human' ? '<div class="meta">我（人工）</div>' : m.sender === 'sys' ? '<div class="meta">系统</div>' : '<div class="meta">AI</div>';
+    const cls = m.direction === 'in' ? 'in' : (m.direction === 'sys' ? 'sys' : 'out');
+    return `<div class="msg ${cls}">${who}<div>${esc(m.text)}</div><div class="meta" style="text-align:right">${fmtTime(m.ts)}</div></div>`;
+  }).join('') || '<div class="empty">暂无消息</div>';
+  box.scrollTop = box.scrollHeight;
+}
+
+async function sendManual() {
+  const text = $('input').value.trim();
+  if (!text || !selected) return;
+  const r = await api('/api/send', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({cid: selected, text})});
+  if (r.error) { alert(r.error); return; }
+  $('input').value = '';
+  await loadMsgs(); await pollState();
+}
+
+async function setMode(mode) {
+  if (!selected) return;
+  await api('/api/mode', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({cid: selected, mode})});
+  await pollState();
+}
+
+function useSuggest() { $('input').value = $('suggestText').value; $('input').focus(); }
+
+$('autoToggle').addEventListener('change', async e => {
+  await api('/api/toggle', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({value: e.target.checked})});
+  pollState();
+});
+$('btnTakeover').onclick = () => setMode('manual');
+$('btnAutoMode').onclick = () => setMode('auto');
+
+$('btnLogin').onclick = async () => {
+  $('dlgLogin').showModal();
+  $('qrImg').style.display = 'none';
+  $('qrStatus').textContent = '正在生成二维码…';
+  const r = await api('/api/login/start', {method:'POST'});
+  if (r.error) { $('qrStatus').textContent = '生成失败：' + r.error; return; }
+  pollQr();
+};
+async function pollQr() {
+  if (!$('dlgLogin').open) return;
+  const s = await api('/api/login/status');
+  $('qrStatus').textContent = s.message || s.status;
+  if (s.status === 'NEW' || s.status === 'SCANNED' || s.status === 'CONFIRMED') {
+    $('qrImg').src = '/api/login/qr.png?t=' + Date.now();
+    $('qrImg').style.display = 'inline-block';
+  }
+  if (s.status === 'CONFIRMED') { setTimeout(() => { $('dlgLogin').close(); pollState(); }, 1200); return; }
+  if (s.status === 'EXPIRED' || s.status === 'error') return;
+  setTimeout(pollQr, 2000);
+}
+
+$('btnSettings').onclick = async () => {
+  const c = await api('/api/settings');
+  $('cfHolding').value = c.holding_text || '';
+  $('cfKeywords').value = (c.handoff_keywords || []).join('，');
+  $('cfDelay').value = c.reply_delay_min;
+  $('cfDelayMax').value = c.reply_delay_max;
+  $('cfMax').value = c.max_replies_per_10min;
+  $('cfPush').value = c.pushplus_token || '';
+  $('cfSc').value = c.serverchan_key || '';
+  $('cfKey').value = c.deepseek_api_key || '';
+  $('cfKb').value = c.kb_path || '';
+  $('cfVBase').value = c.vision_base_url || '';
+  $('cfVKey').value = c.vision_key || '';
+  $('cfVModel').value = c.vision_model || '';
+  $('dlgSettings').showModal();
+};
+async function saveSettings() {
+  await api('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+    holding_text: $('cfHolding').value,
+    handoff_keywords: $('cfKeywords').value,
+    reply_delay_min: parseFloat($('cfDelay').value) || 2,
+    reply_delay_max: parseFloat($('cfDelayMax').value) || 6,
+    max_replies_per_10min: parseInt($('cfMax').value) || 8,
+    pushplus_token: $('cfPush').value.trim(),
+    serverchan_key: $('cfSc').value.trim(),
+    deepseek_api_key: $('cfKey').value.trim(),
+    kb_path: $('cfKb').value.trim(),
+    vision_base_url: $('cfVBase').value.trim(),
+    vision_key: $('cfVKey').value.trim(),
+    vision_model: $('cfVModel').value.trim(),
+  })});
+  $('dlgSettings').close();
+  pollState();
+}
+
+$('btnLogs').onclick = () => { $('dlgLogs').showModal(); pollLogs(); };
+async function pollLogs() {
+  if (!$('dlgLogs').open) return;
+  const d = await api('/api/logs?after=' + lastLogId);
+  const box = $('logs');
+  for (const l of d.logs || []) {
+    lastLogId = Math.max(lastLogId, l.id);
+    const div = document.createElement('div');
+    div.className = 'logline ' + (l.level || '');
+    div.textContent = `[${fmtTime(l.ts)}] ${l.text}`;
+    box.appendChild(div);
+  }
+  box.scrollTop = box.scrollHeight;
+  setTimeout(pollLogs, 2500);
+}
+
+setInterval(pollState, 2500);
+setInterval(loadMsgs, 2000);
+pollState();
+</script>
+</body>
+</html>

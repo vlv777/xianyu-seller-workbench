@@ -1,0 +1,13 @@
+# 备用方案：Docker 部署（arm64）。首选是二进制+systemd（见 部署说明.md）。
+# 镜像到服务器上再定（必须选 arm64 可用、维护中的 PocketBase 镜像）。
+services:
+  pocketbase:
+    image: CHANGE_ME/pocketbase:latest
+    container_name: jxc-pocketbase
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./pb_data:/pb_data
+      - ./pb_public:/pb_public
+    command: serve --http=0.0.0.0:8090

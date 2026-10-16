@@ -1,0 +1,14 @@
+{
+  "店名": "我的小店",
+  "llm_base_url": "https://api.deepseek.com",
+  "llm_model": "deepseek-chat",
+  "llm_key": "",
+  "知识库": "知识库.md",
+  "custom_rules": [
+    "示例规则：不承诺具体到货时间，统一写「这个我确认下」。",
+    "示例规则：买家问是否包邮，按知识库「售后政策」回答，不自行加承诺。"
+  ],
+  "vision_base_url": "",
+  "vision_key": "",
+  "vision_model": ""
+}

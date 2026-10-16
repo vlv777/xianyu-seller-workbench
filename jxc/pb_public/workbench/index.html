@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>卖家工作台</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --line:#262b36; --text:#e8eaf0; --dim:#8b93a3;
+          --ok:#3ddc84; --bad:#ff5c5c; --warn:#ffb020; --accent:#4c9aff; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body { font-family:"Microsoft YaHei", system-ui, sans-serif; background:var(--bg); color:var(--text);
+         display:flex; flex-direction:column; overflow:hidden; }
+  header { display:flex; align-items:center; gap:14px; padding:9px 16px; background:var(--panel);
+           border-bottom:1px solid var(--line); flex:0 0 auto; }
+  .brand { font-size:17px; font-weight:700; letter-spacing:2px; white-space:nowrap; }
+  .pills { display:flex; gap:8px; flex:1; flex-wrap:wrap; min-width:0; }
+  .pill { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--dim);
+          background:#12151c; border:1px solid var(--line); border-radius:20px; padding:4px 12px; white-space:nowrap; }
+  .dot { width:8px; height:8px; border-radius:50%; background:#5a6272; flex:0 0 auto; }
+  .dot.ok { background:var(--ok); box-shadow:0 0 6px var(--ok); }
+  .dot.bad { background:var(--bad); }
+  .openBtn { font-size:12px; color:var(--dim); text-decoration:none; border:1px solid var(--line);
+             padding:5px 12px; border-radius:7px; white-space:nowrap; }
+  .openBtn:hover { color:var(--text); border-color:var(--accent); }
+  nav { display:flex; gap:4px; padding:7px 16px 0; background:var(--panel);
+        border-bottom:1px solid var(--line); flex:0 0 auto; }
+  .tab { padding:8px 20px; font-size:13.5px; color:var(--dim); cursor:pointer; user-select:none;
+         border:1px solid transparent; border-bottom:none; border-radius:9px 9px 0 0; }
+  .tab:hover { color:var(--text); }
+  .tab.active { color:var(--text); background:var(--bg); border-color:var(--line); }
+  main { flex:1; position:relative; min-height:0; }
+  iframe { position:absolute; inset:0; width:100%; height:100%; border:0; background:#fff; display:none; }
+  iframe.active { display:block; }
+  .offline { position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+             flex-direction:column; gap:12px; color:var(--dim); font-size:14px; background:var(--bg); }
+  .offline.show { display:flex; }
+  .offline button { background:var(--accent); color:#fff; border:0; border-radius:8px;
+                    padding:8px 22px; font-size:14px; cursor:pointer; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">卖家工作台</div>
+  <div class="pills" id="pills"></div>
+  <a class="openBtn" id="openBtn" target="_blank" rel="noopener">独立窗口打开</a>
+</header>
+<nav id="tabs"></nav>
+<main id="frames"></main>
+
+<script>
+const DEFAULT_SERVICES = [
+  { key:'pb', label:'进销存', url:'http://127.0.0.1:8090/', health:'http://127.0.0.1:8090/api/health' },
+  { key:'ai', label:'AI开单', url:'http://127.0.0.1:8091/health', health:'http://127.0.0.1:8091/health' },
+];
+
+function kindOf(svc) {
+  if (svc.key === 'ai') return 'svc';
+  if (svc.key === 'pb') return 'app';
+  if ((svc.key || '').startsWith('xy-')) return 'app';
+  return svc.url && svc.url.includes('/health') ? 'svc' : 'app';
+}
+
+async function fetchJson(url, ms) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), ms || 4500);
+  try {
+    const r = await fetch(url + (url.includes('?') ? '&' : '?') + '_t=' + Date.now(),
+                          { cache:'no-store', signal:ac.signal });
+    const text = await r.text();
+    let j = null; try { j = JSON.parse(text); } catch (e) {}
+    return { ok: r.ok, json: j, status: r.status };
+  } catch (e) {
+    return { ok: false, json: null, error: String(e) };
+  } finally { clearTimeout(t); }
+}
+
+function buildPills(services) {
+  const box = document.getElementById('pills');
+  box.innerHTML = '';
+  for (const s of services) {
+    const el = document.createElement('div');
+    el.className = 'pill';
+    el.id = 'pill-' + s.key;
+    el.innerHTML = '<span class="dot" id="dot-' + s.key + '"></span><span>' + s.label + '</span>';
+    box.appendChild(el);
+  }
+}
+
+let frames = {};
+let tabEls = {};
+let activeKey = null;
+
+function buildTabs(apps) {
+  const nav = document.getElementById('tabs');
+  nav.innerHTML = '';
+  const main = document.getElementById('frames');
+  main.innerHTML = '';
+  frames = {}; tabEls = {};
+  apps.forEach((s, idx) => {
+    const tab = document.createElement('div');
+    tab.className = 'tab';
+    tab.textContent = s.label;
+    tab.onclick = () => activate(s.key);
+    nav.appendChild(tab);
+    tabEls[s.key] = tab;
+
+    const wrap = document.createElement('div');
+    wrap.style.position = 'absolute'; wrap.style.inset = '0'; wrap.style.display = 'none';
+    const ifr = document.createElement('iframe');
+    ifr.dataset.key = s.key;
+    ifr.dataset.src = s.url;
+    ifr.title = s.label;
+    wrap.appendChild(ifr);
+    const off = document.createElement('div');
+    off.className = 'offline';
+    off.innerHTML = '<div>' + s.label + ' 未启动或未响应</div>' +
+                    '<button onclick="reloadActive()">重试</button>';
+    wrap.appendChild(off);
+    main.appendChild(wrap);
+    frames[s.key] = { wrap, ifr, off, svc: s };
+
+    if (idx === 0) activate(s.key);
+  });
+}
+
+function activate(key) {
+  activeKey = key;
+  for (const k in frames) {
+    const f = frames[k];
+    const on = k === key;
+    tabEls[k].classList.toggle('active', on);
+    f.wrap.style.display = on ? 'block' : 'none';
+    if (on) {
+      f.ifr.classList.add('active');
+      if (!f.ifr.src) f.ifr.src = f.ifr.dataset.src;
+      document.getElementById('openBtn').href = f.svc.url;
+    } else {
+      f.ifr.classList.remove('active');
+    }
+  }
+}
+
+function reloadActive() {
+  if (!activeKey) return;
+  const f = frames[activeKey];
+  f.ifr.src = f.ifr.dataset.src;
+  f.off.classList.remove('show');
+}
+
+async function poll(services) {
+  for (const s of services) {
+    const dot = document.getElementById('dot-' + s.key);
+    if (!dot) continue;
+    const res = await fetchJson(s.health, 4500);
+    let ok = res.ok;
+    let tip = s.label + '：' + (ok ? '正常' : '未响应');
+    if (ok && res.json) {
+      if (res.json.ok === true) ok = true;
+      if (res.json.client_status) tip = s.label + '：' + res.json.client_status
+            + (res.json.auto_reply ? '（自动回复开）' : '（自动回复关）');
+      if (res.json.login_status && res.json.login_status !== 'idle') tip += ' / 登录:' + res.json.login_status;
+    }
+    dot.className = 'dot ' + (ok ? 'ok' : 'bad');
+    dot.parentElement.title = tip;
+    const f = frames[s.key];
+    if (f) {
+      const ifrOk = ok;
+      f.off.classList.toggle('show', !ifrOk && f.wrap.style.display !== 'none');
+    }
+  }
+}
+
+(async () => {
+  let services = DEFAULT_SERVICES;
+  try {
+    const r = await fetch('services.json?_t=' + Date.now(), { cache:'no-store' });
+    if (r.ok) {
+      const j = await r.json();
+      if (j.services && j.services.length) services = j.services;
+    }
+  } catch (e) { /* 用默认清单 */ }
+  services.sort((a, b) => (a.key === 'pb' ? -1 : b.key === 'pb' ? 1 : a.key.localeCompare(b.key)));
+  buildPills(services);
+  buildTabs(services.filter(s => kindOf(s) === 'app'));
+  poll(services);
+  setInterval(() => poll(services), 5000);
+})();
+</script>
+</body>
+</html>

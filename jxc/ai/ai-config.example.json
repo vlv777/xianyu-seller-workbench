@@ -1,0 +1,6 @@
+{
+  "pb_url": "http://127.0.0.1:8090",
+  "pb_identity": "you@example.com",
+  "pb_password": "改成你的进销存登录密码",
+  "llm_key": "sk-改成你的DeepSeekKey"
+}

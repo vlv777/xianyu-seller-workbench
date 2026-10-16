@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101828">
+<title>进销存</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">进销存</div>
+  <div class="conn"><span id="dot" class="dot off"></span><span id="connText">连接中…</span></div>
+</header>
+<main id="view"></main>
+<nav class="tabbar" id="tabbar">
+  <button data-tab="home" class="active">首页</button>
+  <button data-tab="order">开单</button>
+  <button data-tab="docs">单据</button>
+  <button data-tab="stock">库存</button>
+  <button data-tab="report">报表</button>
+  <button data-tab="settings">设置</button>
+</nav>
+<script src="app.js"></script>
+</body>
+</html>

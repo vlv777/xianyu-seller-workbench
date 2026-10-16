@@ -1,0 +1,36 @@
+# ===== 隐私与数据（绝不入库） =====
+assistant/shops/*
+!assistant/shops/.gitkeep
+assistant/软件配置.json
+assistant/知识库.md
+assistant/补充知识.md
+assistant/session.json
+assistant/kb-chunks.json
+assistant/*.db
+assistant/*.db-wal
+assistant/*.db-shm
+assistant/outbox/
+jxc/pb_data/
+jxc/ai/ai-config.json
+jxc/ai/jxc-ai.log
+jxc/pocketbase.exe
+jxc/pb_public/workbench/services.json
+
+# ===== 构建产物 =====
+jxc/android/keystore.jks
+jxc/android/out/
+jxc/android/build/
+*.apk
+*.log
+
+# ===== 环境 =====
+.venv/
+venv/
+__pycache__/
+*.pyc
+node_modules/
+
+# ===== 系统 =====
+.DS_Store
+Thumbs.db
+desktop.ini
