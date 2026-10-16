@@ -222,88 +222,15 @@ ${ctx}
   return { question: '这是哪类单据？卖货、进货、拆机还是寄改？' };
 }
 
-const XY_SESSION = 'F:\\work\\AI\\opencode\\mlzs-xianyu\\shops\\shop01\\session.json';
-const XY_APPKEY = '34839810';
-const XY_API = 'mtop.taobao.idle.trade.merchant.sold.get';
-const XY_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36';
-
-function xySign(t, token, data) {
-  return crypto.createHash('md5').update(`${token}&${t}&${XY_APPKEY}&${data}`).digest('hex');
-}
-
-const XY_CODES = ['ALL', 'NOT_PAY', 'NOT_SHIP', 'SHIPPED', 'REFUND', 'TRADE_CLOSED', 'TRADE_SUCCESS'];
-
+// 闲鱼订单：统一从闲鱼助手面板取（令牌握手自愈逻辑在 Python 侧单点维护，不再自建 mtop 请求）
 async function xyOrders(page, size, status) {
-  const s = JSON.parse(fs.readFileSync(XY_SESSION, 'utf8'));
-  const cookies = s.cookies || {};
-  const queryCode = XY_CODES.includes(status) ? status : 'ALL';
-  const data = JSON.stringify({ queryCode, pageNumber: page, rowsPerPage: size });
-  const cookieStr = Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join('; ');
-  const call = async (token) => {
-    const t = String(Date.now());
-    const params = new URLSearchParams({
-      jsv: '2.7.2', appKey: XY_APPKEY, t, sign: xySign(t, token, data), v: '1.0',
-      type: 'originaljson', accountSite: 'xianyu', dataType: 'json', timeout: '20000',
-      api: XY_API, sessionOption: 'AutoLoginOnly', spm_cnt: 'a21ybx.im.0.0',
-    });
-    const r = await fetch(`https://h5api.m.goofish.com/h5/${XY_API}/1.0/?${params}`, {
-      method: 'POST',
-      headers: {
-        'User-Agent': XY_UA,
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept-Encoding': 'gzip, deflate',
-        Origin: 'https://www.goofish.com',
-        Referer: 'https://www.goofish.com/',
-        Cookie: cookieStr,
-      },
-      body: 'data=' + encodeURIComponent(data),
-    });
-    const raw = await r.text();
-    const j = JSON.parse(raw.replace(/"orderId":(\d{10,})/g, '"orderId":"$1"'));
-    let newToken = null;
-    try {
-      for (const sc of r.headers.getSetCookie()) {
-        const m = sc.match(/_m_h5_tk=([^;]+)/);
-        if (m) newToken = m[1];
-      }
-    } catch { /* 无 getSetCookie 时忽略 */ }
-    return { j, newToken };
-  };
-  const tk = String(cookies['_m_h5_tk'] || '');
-  let { j, newToken } = await call(tk.split('_')[0]);
-  let ret = String(j.ret || '');
-  if (/TOKEN_EXPIRED|令牌过期|TOKEN_EXOIRED/.test(ret) && newToken) {
-    ({ j } = await call(newToken.split('_')[0]));
-    ret = String(j.ret || '');
+  const url = `http://127.0.0.1:8767/api/orders?page=${encodeURIComponent(page)}&size=${encodeURIComponent(size)}&status=${encodeURIComponent(status)}`;
+  const r = await fetch(url, { signal: AbortSignal.timeout(60000) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.ok === false || j.error) {
+    throw new Error('闲鱼接口：' + String((j && j.error) || r.status).slice(0, 120));
   }
-  if (!/SUCCESS/.test(ret)) throw new Error('闲鱼接口：' + ret.slice(0, 120));
-  const mod = ((j.data || {}).module) || {};
-  const items = mod.items || [];
-  return {
-    total: Number(mod.totalCount || 0),
-    nextPage: mod.nextPage === true,
-    orders: items.map((it) => {
-      const cd = it.commonData || {};
-      const iv = it.itemVO || {};
-      const pv = it.priceVO || {};
-      const bv = it.buyerInfoVO || {};
-      const spec = (iv.itemInfoLines || []).map((l) => `${l.key || ''}${l.value || ''}`.trim()).filter(Boolean).join(' ');
-      return {
-        orderId: String(cd.orderId || ''),
-        status: cd.orderStatus || '',
-        createTime: cd.createTime || '',
-        payTime: cd.paySuccessTime || '',
-        title: iv.title || '',
-        spec,
-        price: Number(pv.auctionPrice || 0),
-        totalPrice: Number(pv.totalPrice || 0),
-        postFee: Number(pv.postFee || 0),
-        buyNum: Number(pv.buyNum || 1),
-        buyerNick: bv.userNick || '',
-        inRefund: !!cd.inRefund,
-      };
-    }),
-  };
+  return { total: j.total || 0, nextPage: j.nextPage === true, orders: j.orders || [] };
 }
 
 let snapCache = { ts: 0, text: '' };

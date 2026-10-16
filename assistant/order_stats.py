@@ -46,18 +46,37 @@ def _get_client():
 
 
 def _token(client):
-    for ck in client.session.cookies:
-        if ck.name == "_m_h5_tk":
-            return ck.value.split("_")[0]
-    return ""
+    # 取"最新"的 _m_h5_tk（按值后缀时间戳），不能拿 jar 里第一个匹配——
+    # 旧令牌会导致 FAIL_SYS_TOKEN_ILLEGAL
+    try:
+        return client._h5_token()
+    except Exception:
+        return ""
 
 
-def _fetch_page(client, query_code, page):
-    data_val = json.dumps({"pageNumber": page, "rowsPerPage": ROWS, "orderIds": "",
+def _clear_tokens(client):
+    """清掉所有 _m_h5_tk/_m_h5_tk_enc（含 domain 为空的僵尸副本）。
+
+    坑：会话里残留的旧 _m_h5_tk_enc 会参与服务端令牌配对校验，
+    导致新领的令牌一律被判 ILLEGAL——必须先清干净再重新握手。
+    """
+    try:
+        for ck in list(client.session.cookies):
+            if ck.name.startswith("_m_h5_tk"):
+                try:
+                    client.session.cookies.clear(ck.domain, ck.path, ck.name)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
+def _fetch_page(client, query_code, page, rows=ROWS):
+    data_val = json.dumps({"pageNumber": page, "rowsPerPage": rows, "orderIds": "",
                            "queryCode": query_code, "orderSearchParam": "{}"},
                           separators=(",", ":"))
     j = {"ret": ["FAIL"]}
-    for attempt in (1, 2):
+    for attempt in range(5):
         token = _token(client)
         t = str(int(time.time() * 1000))
         sign = p.generate_sign(t, token, data_val)
@@ -71,9 +90,18 @@ def _fetch_page(client, query_code, page):
                                 headers=h, timeout=20)
         j = r.json()
         ret = str(j.get("ret") or "")
-        if ("令牌过期" in ret or "TOKEN_EXPIRED" in ret or "TOKEN_EXOIRED" in ret) and attempt == 1:
-            continue  # 响应已带新的 _m_h5_tk，重取 token 再试一次
-        return j
+        token_bad = ("TOKEN_EMPTY" in ret or "TOKEN_ILLEGAL" in ret
+                     or "令牌为空" in ret or "非法令牌" in ret or "令牌过期" in ret
+                     or "TOKEN_EXPIRED" in ret or "TOKEN_EXOIRED" in ret)
+        if not token_bad:
+            return j
+        if attempt >= 4:
+            break
+        # 非法/过期：清掉整套旧令牌（含僵尸 _enc），下一发空手领新令再发
+        if ("TOKEN_ILLEGAL" in ret or "非法令牌" in ret
+                or "令牌过期" in ret or "TOKEN_EXPIRED" in ret or "TOKEN_EXOIRED" in ret):
+            _clear_tokens(client)
+        time.sleep(0.8)
     return j
 
 
@@ -112,3 +140,50 @@ def fetch(force=False):
                 "fetched_at": now, "cached": False}
         _cache["ts"], _cache["data"] = now, data
         return dict(data)
+
+
+ORDER_CODES = ("ALL", "NOT_PAY", "NOT_SHIP", "SHIPPED", "REFUND", "TRADE_CLOSED", "TRADE_SUCCESS")
+
+
+def fetch_orders(page=1, size=20, status="ALL"):
+    """订单列表（供进销存「拉闲鱼订单」用）。字段与旧 Node 实现保持一致。
+
+    返回 {total, nextPage, orders:[{orderId,status,createTime,payTime,title,spec,
+    price,totalPrice,postFee,buyNum,buyerNick,inRefund}]}
+    """
+    page = max(1, int(page or 1))
+    size = min(100, max(1, int(size or 20)))
+    code = status if status in ORDER_CODES else "ALL"
+    client = _get_client()
+    j = _fetch_page(client, code, page, rows=size)
+    if "SUCCESS" not in str(j.get("ret")):
+        raise RuntimeError("接口返回: " + str(j.get("ret"))[:120])
+    mod = ((j.get("data") or {}).get("module")) or {}
+    items = mod.get("items") or []
+    orders = []
+    for it in items:
+        cd = it.get("commonData") or {}
+        iv = it.get("itemVO") or {}
+        pv = it.get("priceVO") or {}
+        bv = it.get("buyerInfoVO") or {}
+        spec = " ".join(
+            ("%s%s" % (l.get("key") or "", l.get("value") or "")).strip()
+            for l in (iv.get("itemInfoLines") or [])
+        ).strip()
+        orders.append({
+            "orderId": str(cd.get("orderId") or ""),
+            "status": str(cd.get("orderStatus") or ""),
+            "createTime": str(cd.get("createTime") or ""),
+            "payTime": str(cd.get("paySuccessTime") or ""),
+            "title": str(iv.get("title") or ""),
+            "spec": spec,
+            "price": float(pv.get("auctionPrice") or 0),
+            "totalPrice": float(pv.get("totalPrice") or 0),
+            "postFee": float(pv.get("postFee") or 0),
+            "buyNum": int(pv.get("buyNum") or 1),
+            "buyerNick": str(bv.get("userNick") or ""),
+            "inRefund": bool(cd.get("inRefund")),
+        })
+    return {"total": int(mod.get("totalCount") or 0),
+            "nextPage": mod.get("nextPage") is True,
+            "orders": orders}

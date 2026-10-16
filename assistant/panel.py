@@ -59,6 +59,14 @@ class Handler(BaseHTTPRequestHandler):
                 "login_status": APP.login.status,
                 "conversations": len(store.get_conversations() or []),
             })
+        elif u.path == "/api/orders":
+            try:
+                page = int((q.get("page") or ["1"])[0])
+                size = int((q.get("size") or ["20"])[0])
+                status = (q.get("status") or ["ALL"])[0]
+                self._json(200, {"ok": True, **order_stats.fetch_orders(page, size, status)})
+            except Exception as e:
+                self._json(200, {"ok": False, "error": str(e)})
         elif u.path == "/api/order-stats":
             try:
                 force = "refresh" in q
