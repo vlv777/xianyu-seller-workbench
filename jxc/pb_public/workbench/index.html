@@ -23,6 +23,19 @@
   .openBtn { font-size:12px; color:var(--dim); text-decoration:none; border:1px solid var(--line);
              padding:5px 12px; border-radius:7px; white-space:nowrap; }
   .openBtn:hover { color:var(--text); border-color:var(--accent); }
+  .ordersbar { display:none; padding:7px 16px; background:#141821; border-bottom:1px solid var(--line);
+               font-size:12.5px; color:var(--dim); white-space:nowrap; overflow-x:auto;
+               flex:0 0 auto; cursor:pointer; }
+  .ordersbar.show { display:block; }
+  .ordersbar b { color:#ffd000; font-weight:600; }
+  .ordersbar .sep { opacity:.45; margin:0 8px; }
+  .ordersbar .obtitle { color:var(--text); font-weight:600; margin-right:8px; }
+  .ordersbar .obbtn { background:#262b36; color:#e8eaf0; border:1px solid #39404f; border-radius:5px;
+                      font-size:12px; padding:2px 12px; margin-right:10px; cursor:pointer; }
+  .ordersbar .obbtn:hover { border-color:#ffd000; color:#ffd000; }
+  .ordersbar .obbtn:disabled { opacity:.5; cursor:default; }
+  .ordersbar .obsel { background:#262b36; color:#e8eaf0; border:1px solid #39404f; border-radius:5px;
+                      font-size:12px; padding:2px 6px; margin-right:10px; cursor:pointer; }
   nav { display:flex; gap:4px; padding:7px 16px 0; background:var(--panel);
         border-bottom:1px solid var(--line); flex:0 0 auto; }
   .tab { padding:8px 20px; font-size:13.5px; color:var(--dim); cursor:pointer; user-select:none;
@@ -45,6 +58,7 @@
   <div class="pills" id="pills"></div>
   <a class="openBtn" id="openBtn" target="_blank" rel="noopener">独立窗口打开</a>
 </header>
+<div class="ordersbar" id="ordersBar" title="点击立即刷新"></div>
 <nav id="tabs"></nav>
 <main id="frames"></main>
 
@@ -148,6 +162,69 @@ function reloadActive() {
   f.off.classList.remove('show');
 }
 
+function money(n) {
+  return '¥' + Number(n || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function hhmm(sec) {
+  try { return new Date((sec || 0) * 1000).toLocaleTimeString('zh-CN', { hour12: false }); }
+  catch (e) { return '--'; }
+}
+
+const OB_OPTS = [[0, '手动'], [10, '10 分钟'], [60, '1 小时'], [180, '3 小时'], [300, '5 小时']];
+let obIntervalMin = 0;
+let obTimer = null;
+
+function selOptions() {
+  return OB_OPTS.map(([v, t]) =>
+    '<option value="' + v + '"' + (obIntervalMin === v ? ' selected' : '') + '>' + t + '</option>').join('');
+}
+
+function applyObTimer(services) {
+  if (obTimer) { clearInterval(obTimer); obTimer = null; }
+  if (obIntervalMin > 0) {
+    obTimer = setInterval(() => pollOrders(services), obIntervalMin * 60000);
+  }
+}
+
+let ordersBusy = false;
+async function pollOrders(services, force) {
+  if (ordersBusy) return;
+  const shops = services.filter(s => (s.key || '').startsWith('xy-'));
+  if (!shops.length) return;
+  ordersBusy = true;
+  const bar = document.getElementById('ordersBar');
+  const btn = document.getElementById('obRefresh');
+  if (btn) btn.disabled = true;
+  const parts = [];
+  for (const s of shops) {
+    try {
+      const url = 'http://127.0.0.1:' + s.port + '/api/order-stats' + (force ? '?refresh=1' : '');
+      const r = await fetchJson(url, force ? 30000 : 8000);
+      const j = r.json;
+      if (j && j.ok && j.has_data) {
+        parts.push('<span>' + s.label + '：待发货 <b>' + money(j.pending_amount) + '</b>（' +
+          (j.pending_count || 0) + ' 单）<span class="sep">·</span>已发货待到账 <b>' +
+          money(j.shipped_amount) + '</b>（' + (j.shipped_count || 0) + ' 单）<span class="sep">·</span>更新 ' +
+          hhmm(j.fetched_at) + (j.cached ? '（缓存）' : '') + '</span>');
+      } else {
+        parts.push('<span>' + s.label + '：订单数据未同步' +
+          (j && j.error ? '（' + String(j.error).slice(0, 60) + '）' : '') + '</span>');
+      }
+    } catch (e) {
+      parts.push('<span>' + s.label + '：订单数据未同步</span>');
+    }
+  }
+  bar.innerHTML = '<span class="obtitle">闲鱼订单金额</span>' +
+    '<button class="obbtn" id="obRefresh">刷新</button>' +
+    '<select class="obsel" id="obInterval" title="自动刷新间隔">' + selOptions() + '</select>' +
+    parts.join('<span class="sep">|</span>');
+  bar.classList.add('show');
+  ordersBusy = false;
+  const btn2 = document.getElementById('obRefresh');
+  if (btn2) btn2.disabled = false;
+}
+
 async function poll(services) {
   for (const s of services) {
     const dot = document.getElementById('dot-' + s.key);
@@ -185,6 +262,22 @@ async function poll(services) {
   buildTabs(services.filter(s => kindOf(s) === 'app'));
   poll(services);
   setInterval(() => poll(services), 5000);
+  try { obIntervalMin = parseInt(localStorage.getItem('wb-orders-interval') || '0', 10) || 0; } catch (e) {}
+  if (!OB_OPTS.some((o) => o[0] === obIntervalMin)) obIntervalMin = 0;
+  pollOrders(services);  // 打开页面拉一次
+  applyObTimer(services);
+  const barEl = document.getElementById('ordersBar');
+  barEl.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'obRefresh') pollOrders(services, true);
+  });
+  barEl.addEventListener('change', (e) => {
+    if (e.target && e.target.id === 'obInterval') {
+      obIntervalMin = parseInt(e.target.value, 10) || 0;
+      try { localStorage.setItem('wb-orders-interval', String(obIntervalMin)); } catch (err) {}
+      applyObTimer(services);
+      if (obIntervalMin > 0) pollOrders(services);
+    }
+  });
 })();
 </script>
 </body>

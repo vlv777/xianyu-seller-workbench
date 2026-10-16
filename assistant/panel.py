@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import order_stats
 import store
 
 ROOT = Path(__file__).resolve().parent
@@ -58,6 +59,13 @@ class Handler(BaseHTTPRequestHandler):
                 "login_status": APP.login.status,
                 "conversations": len(store.get_conversations() or []),
             })
+        elif u.path == "/api/order-stats":
+            try:
+                force = "refresh" in q
+                self._json(200, {"ok": True, "has_data": True,
+                                 **order_stats.fetch(force=force)})
+            except Exception as e:
+                self._json(200, {"ok": False, "has_data": False, "error": str(e)})
         elif u.path == "/api/state":
             self._json(200, APP.state())
         elif u.path == "/api/settings":
