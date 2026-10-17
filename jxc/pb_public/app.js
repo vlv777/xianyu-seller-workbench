@@ -287,6 +287,37 @@ function loadXyCache() {
     return j;
   } catch (e) { return null; }
 }
+
+let xyDone = null;       // 已开单的闲鱼单号集合（以账本备注「闲鱼单 xxx」为准）
+let xyDoneLoading = false;
+
+async function loadXyDone() {
+  if (xyDone || xyDoneLoading) return;
+  xyDoneLoading = true;
+  try {
+    const r = await api('/collections/sales/records?perPage=500&sort=-date');
+    const set = new Set();
+    for (const it of (r.items || [])) {
+      const m = String(it.note || '').match(/闲鱼单\s*(\d{6,})/);
+      if (m) set.add(m[1]);
+    }
+    xyDone = set;
+    if (ui.tab === 'order') render();
+  } catch (e) { /* 加载失败就先不隐藏 */ }
+  finally { xyDoneLoading = false; }
+}
+
+function markOrderRecorded(note) {
+  const m = String(note || '').match(/闲鱼单\s*(\d{6,})/);
+  if (!m) return;
+  const oid = m[1];
+  xyDone = xyDone || new Set();
+  xyDone.add(oid);
+  if (xyList && Array.isArray(xyList.orders)) {
+    xyList.orders = xyList.orders.filter((o) => String(o.orderId) !== oid);
+    saveXyCache();
+  }
+}
 const XY_TABS = [['NOT_SHIP', '待发货'], ['SHIPPED', '已发货'], ['REFUND', '退款中'], ['TRADE_SUCCESS', '交易成功'], ['TRADE_CLOSED', '交易关闭'], ['ALL', '全部']];
 
 const FIELD_LABELS = {
@@ -310,6 +341,7 @@ function renderOrder() {
       const c = loadXyCache();
       if (c) { xyList = c; xyStatus = c.status || xyStatus; }
     }
+    if (!xyDone) loadXyDone();
     return `<div class="card">
       <div class="card-title">开单 · 一个框</div>
       <textarea id="orderText" class="order-input" rows="3" placeholder="说一句或打一句，例如：&#10;卖了台亚瑟1G128双风扇 133 包邮&#10;进了11台红米AX6原机 80.75&#10;拆了56台亚瑟128G，出55个128G芯片"></textarea>
@@ -398,7 +430,12 @@ function xyListCard() {
       <div class="order-actions"><button class="btn" data-action="close-xy">收起</button></div>
     </div>`;
   }
-  const rows = (xyList.orders || []).map((o, i) => {
+  const done = xyDone || new Set();
+  const all = xyList.orders || [];
+  const shown = [];
+  all.forEach((o, i) => { if (!done.has(String(o.orderId))) shown.push([o, i]); });
+  const hiddenN = all.length - shown.length;
+  const rows = shown.map(([o, i]) => {
     const cls = o.status === '交易成功' ? 'ok' : (o.status === '交易关闭' ? 'bad' : 'warn');
     return `<div class="row col">
       <div class="row-head"><span class="badge ${cls}">${esc(o.status)}</span><b>${esc(String(o.title).slice(0, 22))}</b><span class="dim">¥${o.totalPrice} · ${esc(o.createTime)}</span></div>
@@ -409,7 +446,7 @@ function xyListCard() {
   const cacheAt = xyList.ts ? new Date(xyList.ts).toLocaleTimeString('zh-CN', { hour12: false }).slice(0, 5) : '';
   const stale = xyList.ts && (Date.now() - xyList.ts > 86400000) ? ' · 较旧，建议点「拉闲鱼订单」刷新' : '';
   return `<div class="card">
-    <div class="card-title">闲鱼订单（共 ${xyList.total} 笔 · 第 ${xyList.page} 页${cacheAt ? ' · 缓存 ' + cacheAt : ''}${stale}）</div>
+    <div class="card-title">闲鱼订单（共 ${xyList.total} 笔 · 第 ${xyList.page} 页${hiddenN ? ' · 已开单隐藏 ' + hiddenN : ''}${cacheAt ? ' · 缓存 ' + cacheAt : ''}${stale}）</div>
     <div class="subtabs">${tabs}</div>
     ${rows || '<div class="empty">没有订单</div>'}
     <div class="order-actions">
@@ -525,6 +562,7 @@ async function doConfirmOrder() {
     } else {
       throw new Error('未知草稿类型 ' + d.type);
     }
+    markOrderRecorded(f.note);
     cache = {};
     commitMsg = `#${created.id} ${d.summary}`;
     draft = null;
