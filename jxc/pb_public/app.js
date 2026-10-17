@@ -265,6 +265,28 @@ let draft = null;
 let commitMsg = null;
 let xyList = null;
 let xyStatus = 'NOT_SHIP';
+let xyHidden = false;  // 手动点过「收起」后，开单页不再自动恢复缓存
+const XY_CACHE_KEY = 'jxc_xy_cache';
+
+function saveXyCache() {
+  try {
+    if (!xyList || xyList.error || !Array.isArray(xyList.orders)) return;
+    localStorage.setItem(XY_CACHE_KEY, JSON.stringify({
+      ts: Date.now(), status: xyStatus, page: xyList.page,
+      total: xyList.total, nextPage: xyList.nextPage, orders: xyList.orders,
+    }));
+  } catch (e) { /* 隐私模式等落不了盘就忽略 */ }
+}
+
+function loadXyCache() {
+  try {
+    const raw = localStorage.getItem(XY_CACHE_KEY);
+    if (!raw) return null;
+    const j = JSON.parse(raw);
+    if (!j || !Array.isArray(j.orders) || !j.ts) return null;
+    return j;
+  } catch (e) { return null; }
+}
 const XY_TABS = [['NOT_SHIP', '待发货'], ['SHIPPED', '已发货'], ['REFUND', '退款中'], ['TRADE_SUCCESS', '交易成功'], ['TRADE_CLOSED', '交易关闭'], ['ALL', '全部']];
 
 const FIELD_LABELS = {
@@ -284,6 +306,10 @@ function renderOrder() {
     </div>`;
   }
   if (!draft) {
+    if (!xyList && !xyHidden) {
+      const c = loadXyCache();
+      if (c) { xyList = c; xyStatus = c.status || xyStatus; }
+    }
     return `<div class="card">
       <div class="card-title">开单 · 一个框</div>
       <textarea id="orderText" class="order-input" rows="3" placeholder="说一句或打一句，例如：&#10;卖了台亚瑟1G128双风扇 133 包邮&#10;进了11台红米AX6原机 80.75&#10;拆了56台亚瑟128G，出55个128G芯片"></textarea>
@@ -380,8 +406,10 @@ function xyListCard() {
     </div>`;
   }).join('');
   const tabs = XY_TABS.map(([k, label]) => `<button data-xy-status="${k}" class="${xyStatus === k ? 'active' : ''}">${label}</button>`).join('');
+  const cacheAt = xyList.ts ? new Date(xyList.ts).toLocaleTimeString('zh-CN', { hour12: false }).slice(0, 5) : '';
+  const stale = xyList.ts && (Date.now() - xyList.ts > 86400000) ? ' · 较旧，建议点「拉闲鱼订单」刷新' : '';
   return `<div class="card">
-    <div class="card-title">闲鱼订单（共 ${xyList.total} 笔 · 第 ${xyList.page} 页）</div>
+    <div class="card-title">闲鱼订单（共 ${xyList.total} 笔 · 第 ${xyList.page} 页${cacheAt ? ' · 缓存 ' + cacheAt : ''}${stale}）</div>
     <div class="subtabs">${tabs}</div>
     ${rows || '<div class="empty">没有订单</div>'}
     <div class="order-actions">
@@ -400,6 +428,8 @@ async function doPullXY(page) {
     if (!r.ok) throw new Error(j.error || ('接口 ' + r.status));
     j.page = page;
     xyList = j;
+    xyHidden = false;
+    saveXyCache();
   } catch (e) {
     xyList = { error: e.message };
   }
@@ -693,6 +723,7 @@ document.addEventListener('click', (e) => {
   const xySt = e.target.closest('[data-xy-status]');
   if (xySt) {
     xyStatus = xySt.dataset.xyStatus;
+    xyHidden = false;
     doPullXY(1);
     return;
   }
@@ -722,6 +753,7 @@ document.addEventListener('click', (e) => {
     else if (a === 'pull-xy-more') doPullXY(((xyList && xyList.page) || 1) + 1);
     else if (a === 'close-xy') {
       xyList = null;
+      xyHidden = true;
       render();
     }
     else if (a === 'discard-order') {
