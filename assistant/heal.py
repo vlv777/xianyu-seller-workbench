@@ -306,10 +306,41 @@ async def capture_x5sec(env):
         return False
 
 
+def trade_session_ok(env):
+    """探测交易会话（WS 在线 ≠ 拉订单的 mtop 会话有效）。
+
+    返回 False 表示需要浏览器回填 cookie。
+    """
+    try:
+        with urllib.request.urlopen(
+                f"http://127.0.0.1:{env['port']}/api/order-stats", timeout=90) as r:
+            j = json.loads(r.read().decode("utf-8"))
+        if j.get("ok"):
+            return True
+        err = str(j.get("error") or "")
+        log(env, f"交易会话探测失败：{err[:90]}")
+        return not ("SESSION_EXPIRED" in err or "过期" in err or "登录" in err)
+    except Exception as e:
+        log(env, f"交易会话探测异常（按正常处理）：{e}")
+        return True
+
+
 async def amain(env):
     s = state(env["port"])
     if s and s.get("status") == "在线":
-        log(env, "状态在线，跳过")
+        if trade_session_ok(env):
+            log(env, "状态在线，跳过")
+            return
+        log(env, "状态在线但交易会话过期（拉闲鱼订单会失败），开始浏览器回填")
+        ok = await capture_x5sec(env)
+        if ok:
+            kill_chrome(env)
+            restart_app(env)
+            time.sleep(8)
+            s3 = state(env["port"])
+            log(env, "交易会话回填完成，状态=%s" % (s3.get("status") if s3 else "未响应"))
+        else:
+            log(env, "交易会话回填失败：浏览器窗口保留，可人工处理")
         return
     if s and s.get("status") == "未登录":
         log(env, "未登录（等待扫码），跳过")
