@@ -3,5 +3,6 @@ chcp 65001 >nul
 cd /d %~dp0
 set PY=python
 if exist "%~dp0..\assistant\.venv\Scripts\python.exe" set PY=%~dp0..\assistant\.venv\Scripts\python.exe
+if exist "%~dp0..\runtime\python\python.exe" set PY=%~dp0..\runtime\python\python.exe
 "%PY%" "%~dp0首次配置.py"
 pause

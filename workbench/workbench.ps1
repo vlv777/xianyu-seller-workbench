@@ -23,12 +23,14 @@ function Resolve-Exe([string[]]$cands, [string]$fallback) {
 }
 
 $NODE = Resolve-Exe @(
+    (Join-Path $ROOT 'runtime\node\node.exe'),
     (Join-Path $env:ProgramFiles 'nodejs\node.exe'),
     'C:\Program Files (x86)\nodejs\node.exe'
 ) 'node'
 
-# python 解释器：assistant/.venv 优先，其次仓库 .venv，最后系统 python
+# python 解释器：便携版 runtime 优先，其次 assistant/.venv，再次仓库 .venv，最后系统 python
 $PY = Resolve-Exe @(
+    (Join-Path $ROOT 'runtime\python\python.exe'),
     (Join-Path $ASSIST_DIR '.venv\Scripts\python.exe'),
     (Join-Path $ROOT '.venv\Scripts\python.exe'),
     (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python313\python.exe'),

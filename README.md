@@ -49,6 +49,16 @@
 
 ## 快速开始（Windows 10/11）
 
+**方式一 · 免安装版（推荐，不用装任何环境）**
+
+1. 到 [**Releases**](https://github.com/vlv777/xianyu-seller-workbench/releases/latest) 下载
+   `xianyu-seller-workbench-portable.zip`
+2. 解压 → 双击 `setup\首次配置.bat` → 双击 `workbench\工作台.bat` 选 `1`
+3. 图文步骤看 **[docs/安装指南.md](docs/安装指南.md)**；
+   想让 AI 帮你装，把 **[docs/AI一键部署提示词.md](docs/AI一键部署提示词.md)** 整段粘贴给任意 AI 即可
+
+**方式二 · 从源码安装（开发者）**
+
 1. **装依赖**：双击 `setup\安装依赖.bat`
    （自动建 venv、装 Python 依赖、下载 PocketBase；需要网络）
 2. **首次配置**：双击 `setup\首次配置.bat`

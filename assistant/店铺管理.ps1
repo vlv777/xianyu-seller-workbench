@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Continue'
 $root = $PSScriptRoot
 $py = ''
-foreach ($c in @("$root\.venv\Scripts\python.exe", "$root\..\venv\Scripts\python.exe")) {
+foreach ($c in @("$root\..\runtime\python\python.exe", "$root\.venv\Scripts\python.exe", "$root\..\venv\Scripts\python.exe")) {
     if (Test-Path $c) { $py = (Resolve-Path $c).Path; break }
 }
 if (-not $py) { $py = 'python' }
