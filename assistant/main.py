@@ -31,9 +31,10 @@ DEFAULT_CONFIG = {
     "port": 8767,
     "auto_reply": True,
     "holding_text": "这个我确认下",
-    "handoff_keywords": ["退款", "退货", "投诉", "举报", "纠纷", "假货", "骗子", "赔",
-                         "便宜", "少点", "少一点", "能少", "优惠", "降价", "砍价",
-                         "议价", "抹零", "小刀", "再低", "低点", "最低"],
+    "no_bargain_text": "不讲价哈，价格已经是最低了",
+    "handoff_keywords": ["退款", "退货", "投诉", "举报", "纠纷", "假货", "骗子", "赔"],
+    "no_bargain_keywords": ["便宜", "少点", "少一点", "能少", "优惠", "降价", "砍价",
+                            "议价", "抹零", "小刀", "再低", "低点", "最低", "讲价"],
     "reply_delay_min": 2.0,
     "reply_delay_max": 6.0,
     "max_replies_per_10min": 8,
@@ -174,6 +175,18 @@ class App:
         keyword = next((k for k in self.config.get("handoff_keywords", []) if k and k in text), "")
         if keyword:
             await self._handoff(cid, msg, "", f"命中关键词「{keyword}」")
+            return
+        bargain = next((k for k in self.config.get("no_bargain_keywords", []) if k and k in text), "")
+        if bargain:
+            if not self._rate_ok(cid):
+                store.log("warn", f"{nick} 触发限频，议价本轮不回复")
+                return
+            self._rate_mark(cid)
+            await self._send(cid, msg["buyer_id"],
+                             self._safe_text(str(self.config.get("no_bargain_text")
+                                                 or "不讲价哈，价格已经是最低了")),
+                             sender="ai", nick=nick)
+            store.log("info", f"议价直复 {nick}：命中「{bargain}」")
             return
         if not self._rate_ok(cid):
             store.log("warn", f"{nick} 触发限频，本轮不回复")
@@ -334,7 +347,7 @@ class App:
         return {"ok": True}
 
     def update_settings(self, data):
-        for key in ("holding_text", "reply_delay_min", "reply_delay_max",
+        for key in ("holding_text", "no_bargain_text", "reply_delay_min", "reply_delay_max",
                     "max_replies_per_10min", "pushplus_token", "serverchan_key"):
             if key in data:
                 self.config[key] = data[key]
@@ -343,6 +356,11 @@ class App:
             if isinstance(kws, str):
                 kws = [k.strip() for k in kws.replace("，", ",").split(",") if k.strip()]
             self.config["handoff_keywords"] = kws
+        if "no_bargain_keywords" in data:
+            kws = data["no_bargain_keywords"]
+            if isinstance(kws, str):
+                kws = [k.strip() for k in kws.replace("，", ",").split(",") if k.strip()]
+            self.config["no_bargain_keywords"] = kws
         soft = {}
         if "deepseek_api_key" in data:
             soft["llm_key"] = str(data.get("deepseek_api_key") or "").strip()
