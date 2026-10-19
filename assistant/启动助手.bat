@@ -1,5 +1,5 @@
 @echo off
 chcp 65001 >nul
 cd /d %~dp0
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0µêÆÌ¹ÜÀí.ps1" -Action start-all
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0åº—é“ºç®¡ç†.ps1" -Action start-all
 pause

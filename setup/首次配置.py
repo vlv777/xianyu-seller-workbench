@@ -15,6 +15,12 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 ROOT = Path(__file__).resolve().parent.parent
 ASSIST = ROOT / "assistant"
 JXC = ROOT / "jxc"
@@ -88,7 +94,7 @@ def setup_pb_account(email, password):
                        "passwordConfirm": password, "verified": True}, token=token)
     if st in (200, 201):
         print("  登录用户已创建")
-    elif st == 400 and "already" in json.dumps(j).lower():
+    elif st == 400 and ("already" in json.dumps(j).lower() or "unique" in json.dumps(j).lower()):
         print("  登录用户已存在，跳过")
     else:
         print(f"  [提示] 用户创建返回 {st}：{json.dumps(j, ensure_ascii=False)[:120]}")

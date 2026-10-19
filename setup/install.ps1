@@ -23,10 +23,21 @@ if (-not (Test-Path (Join-Path $VENV 'Scripts\python.exe'))) {
     & $py -m venv $VENV
 }
 $vpy = Join-Path $VENV 'Scripts\python.exe'
-Write-Host '[2/4] 安装 Python 依赖（国内镜像）...'
-& $vpy -m pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple --quiet
-& $vpy -m pip install -r (Join-Path $ASSIST 'requirements.txt') -i https://pypi.tuna.tsinghua.edu.cn/simple
-if ($LASTEXITCODE -ne 0) { throw '依赖安装失败：检查网络后重试' }
+Write-Host '[2/4] 安装 Python 依赖（自动选可用镜像）...'
+& $vpy -m pip install --upgrade pip --quiet 2>$null
+$mirrors = @(
+    'https://pypi.tuna.tsinghua.edu.cn/simple',
+    'https://mirrors.aliyun.com/pypi/simple/',
+    'https://pypi.org/simple'
+)
+$okDeps = $false
+foreach ($m in $mirrors) {
+    Write-Host "  尝试镜像：$m"
+    & $vpy -m pip install -r (Join-Path $ASSIST 'requirements.txt') -i $m --timeout 20 --retries 2
+    if ($LASTEXITCODE -eq 0) { $okDeps = $true; break }
+    Write-Host '  该镜像不通，换下一个' -ForegroundColor DarkGray
+}
+if (-not $okDeps) { throw '依赖安装失败：检查网络后重试' }
 Write-Host '[2/4] 依赖 OK'
 
 # ---- 3) Node ----
